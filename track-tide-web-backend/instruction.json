@@ -1,0 +1,505 @@
+{
+    "project_name": "Music Stream",
+    "description": "A music streaming application with user authentication, playlists, favorites, and Discogs API integration",
+    "tech_stack": {
+      "frontend": {
+        "framework": "React with TypeScript",
+        "styling": "Tailwind CSS",
+        "routing": "React Router",
+        "state_management": "React Context API",
+        "ui_components": "shadcn/ui",
+        "icons": "Lucide React",
+        "http_client": "Axios"
+      },
+      "backend": {
+        "framework": "Node.js with Express",
+        "language": "TypeScript",
+        "database": "MongoDB with Mongoose",
+        "authentication": "JWT with bcrypt",
+        "validation": "Joi",
+        "cors": "cors middleware",
+        "environment": "dotenv"
+      },
+      "external_apis": {
+        "discogs": {
+          "base_url": "https://api.discogs.com",
+          "endpoints": {
+            "search": "/database/search",
+            "release": "/releases/{id}",
+            "artist": "/artists/{id}",
+            "artist_releases": "/artists/{id}/releases"
+          },
+          "authentication": "User-Agent header required",
+          "rate_limit": "60 requests per minute"
+        }
+      }
+    },
+    "database_schema": {
+      "collections": {
+        "users": {
+          "schema": {
+            "_id": "ObjectId",
+            "name": "String (required)",
+            "email": "String (required, unique)",
+            "passwordHash": "String (required)",
+            "profilePicture": "String (optional)",
+            "createdAt": "Date (default: now)",
+            "lastLoginAt": "Date",
+            "accountType": "String (enum: ['free', 'premium'], default: 'free')",
+            "preferences": {
+              "theme": "String (enum: ['dark', 'light'], default: 'dark')",
+              "language": "String (default: 'en')",
+              "autoplay": "Boolean (default: true)",
+              "crossfade": "Number (default: 0)"
+            },
+            "statistics": {
+              "totalListeningTime": "Number (default: 0)",
+              "totalSongsPlayed": "Number (default: 0)",
+              "favoriteGenres": "[String] (default: [])",
+              "favoriteArtists": "[String] (default: [])"
+            }
+          },
+          "indexes": [
+            {"email": 1, "unique": true},
+            {"lastLoginAt": -1}
+          ]
+        },
+        "user_liked_songs": {
+          "schema": {
+            "_id": "ObjectId",
+            "userId": "ObjectId (ref: users, required)",
+            "discogsSongId": "String (required)",
+            "songTitle": "String (required)",
+            "artistName": "String (required)",
+            "albumName": "String (required)",
+            "duration": "Number (required)",
+            "likedAt": "Date (default: now)",
+            "context": "String (enum: ['search', 'playlist', 'recommendation'])"
+          },
+          "indexes": [
+            {"userId": 1, "likedAt": -1},
+            {"discogsSongId": 1, "likedAt": -1}
+          ]
+        },
+        "playlists": {
+          "schema": {
+            "_id": "ObjectId",
+            "userId": "ObjectId (ref: users, required)",
+            "name": "String (required, max: 100)",
+            "description": "String (max: 500)",
+            "coverImage": "String",
+            "isPublic": "Boolean (default: false)",
+            "createdAt": "Date (default: now)",
+            "updatedAt": "Date (default: now)",
+            "statistics": {
+              "totalSongs": "Number (default: 0)",
+              "totalDuration": "Number (default: 0)"
+            },
+            "tags": "[String] (default: [])",
+            "genre": "String"
+          },
+          "indexes": [
+            {"userId": 1, "createdAt": -1},
+            {"isPublic": 1, "statistics.totalSongs": -1}
+          ]
+        },
+        "playlist_songs": {
+          "schema": {
+            "_id": "ObjectId",
+            "playlistId": "ObjectId (ref: playlists, required)",
+            "discogsSongId": "String (required)",
+            "songTitle": "String (required)",
+            "artistName": "String (required)",
+            "albumName": "String (required)",
+            "duration": "Number (required)",
+            "position": "Number (required)",
+            "addedAt": "Date (default: now)",
+            "addedBy": "ObjectId (ref: users, required)"
+          },
+          "indexes": [
+            {"playlistId": 1, "position": 1},
+            {"discogsSongId": 1}
+          ]
+        },
+        "listening_history": {
+          "schema": {
+            "_id": "ObjectId",
+            "userId": "ObjectId (ref: users, required)",
+            "discogsSongId": "String (required)",
+            "songTitle": "String (required)",
+            "artistName": "String (required)",
+            "albumName": "String (required)",
+            "playedAt": "Date (default: now)",
+            "duration": "Number (required)",
+            "completed": "Boolean (default: false)",
+            "context": {
+              "source": "String (enum: ['playlist', 'search', 'recommendation'])",
+              "playlistId": "ObjectId (ref: playlists)",
+              "searchQuery": "String"
+            }
+          },
+          "indexes": [
+            {"userId": 1, "playedAt": -1},
+            {"discogsSongId": 1, "playedAt": -1}
+          ]
+        },
+        "user_followed_artists": {
+          "schema": {
+            "_id": "ObjectId",
+            "userId": "ObjectId (ref: users, required)",
+            "discogsArtistId": "String (required)",
+            "artistName": "String (required)",
+            "followedAt": "Date (default: now)"
+          },
+          "indexes": [
+            {"userId": 1, "followedAt": -1},
+            {"discogsArtistId": 1, "followedAt": -1}
+          ]
+        },
+        "search_history": {
+          "schema": {
+            "_id": "ObjectId",
+            "userId": "ObjectId (ref: users, required)",
+            "query": "String (required)",
+            "searchedAt": "Date (default: now)",
+            "clickedResults": [{
+              "type": "String (enum: ['song', 'artist', 'album'])",
+              "discogsId": "String",
+              "title": "String",
+              "clickedAt": "Date"
+            }]
+          },
+          "indexes": [
+            {"userId": 1, "searchedAt": -1}
+          ]
+        },
+        "curated_playlists": {
+          "schema": {
+            "_id": "ObjectId",
+            "name": "String (required)",
+            "description": "String",
+            "coverImage": "String",
+            "genre": "String",
+            "mood": "String (enum: ['energetic', 'chill', 'workout', 'party'])",
+            "isActive": "Boolean (default: true)",
+            "createdAt": "Date (default: now)",
+            "updatedAt": "Date (default: now)",
+            "curator": "String (enum: ['system', 'admin', 'ai'])",
+            "criteria": {
+              "genre": "[String]",
+              "yearRange": {
+                "min": "Number",
+                "max": "Number"
+              },
+              "popularity": "String (enum: ['high', 'medium', 'low'])",
+              "style": "[String]"
+            }
+          },
+          "indexes": [
+            {"isActive": 1, "genre": 1},
+            {"mood": 1, "isActive": 1}
+          ]
+        },
+        "curated_playlist_songs": {
+          "schema": {
+            "_id": "ObjectId",
+            "playlistId": "ObjectId (ref: curated_playlists, required)",
+            "discogsSongId": "String (required)",
+            "songTitle": "String (required)",
+            "artistName": "String (required)",
+            "albumName": "String (required)",
+            "duration": "Number (required)",
+            "position": "Number (required)",
+            "addedAt": "Date (default: now)",
+            "reason": "String (enum: ['popular', 'trending', 'genre_match'])"
+          },
+          "indexes": [
+            {"playlistId": 1, "position": 1}
+          ]
+        },
+        "user_curated_playlists": {
+          "schema": {
+            "_id": "ObjectId",
+            "userId": "ObjectId (ref: users, required)",
+            "playlistType": "String (enum: ['discover_weekly', 'release_radar', 'daily_mix'])",
+            "weekNumber": "Number",
+            "generatedAt": "Date (default: now)",
+            "expiresAt": "Date (required)",
+            "songs": [{
+              "discogsSongId": "String (required)",
+              "songTitle": "String (required)",
+              "artistName": "String (required)",
+              "albumName": "String (required)",
+              "duration": "Number (required)",
+              "position": "Number (required)",
+              "reason": "String"
+            }]
+          },
+          "indexes": [
+            {"userId": 1, "playlistType": 1, "expiresAt": 1}
+          ]
+        }
+      }
+    },
+    "backend_structure": {
+      "project_structure": {
+        "src/": {
+          "controllers/": "API route handlers",
+          "models/": "Mongoose models",
+          "middleware/": "Custom middleware",
+          "services/": "Business logic and external API calls",
+          "routes/": "API routes",
+          "utils/": "Helper functions",
+          "types/": "TypeScript type definitions",
+          "config/": "Configuration files"
+        },
+        "package.json": "Dependencies and scripts",
+        "tsconfig.json": "TypeScript configuration",
+        ".env": "Environment variables",
+        "server.ts": "Main server file"
+      },
+      "dependencies": {
+        "express": "^4.18.2",
+        "mongoose": "^7.5.0",
+        "bcryptjs": "^2.4.3",
+        "jsonwebtoken": "^9.0.2",
+        "joi": "^17.9.2",
+        "cors": "^2.8.5",
+        "dotenv": "^16.3.1",
+        "axios": "^1.5.0",
+        "helmet": "^7.0.0",
+        "express-rate-limit": "^6.10.0",
+        "compression": "^1.7.4",
+        "morgan": "^1.10.0",
+        "@types/express": "^4.17.17",
+        "@types/node": "^20.5.0",
+        "@types/bcryptjs": "^2.4.2",
+        "@types/jsonwebtoken": "^9.0.2",
+        "@types/cors": "^2.8.13",
+        "@types/compression": "^1.7.2",
+        "@types/morgan": "^1.9.4",
+        "typescript": "^5.1.6",
+        "ts-node": "^10.9.1",
+        "nodemon": "^3.0.1"
+      },
+      "environment_variables": {
+        "PORT": "3001",
+        "MONGODB_URI": "mongodb://localhost:27017/music-stream",
+        "JWT_SECRET": "your-super-secret-jwt-key",
+        "JWT_EXPIRES_IN": "7d",
+        "DISCOGS_USER_AGENT": "MusicStreamApp/1.0",
+        "NODE_ENV": "development"
+      },
+      "api_endpoints": {
+        "authentication": {
+          "POST /api/auth/register": "Register new user",
+          "POST /api/auth/login": "Login user",
+          "POST /api/auth/logout": "Logout user",
+          "GET /api/auth/me": "Get current user profile",
+          "PUT /api/auth/profile": "Update user profile"
+        },
+        "songs": {
+          "GET /api/songs/search": "Search songs via Discogs API",
+          "GET /api/songs/:id": "Get song details from Discogs",
+          "GET /api/songs/artist/:id": "Get artist releases from Discogs"
+        },
+        "favorites": {
+          "GET /api/favorites": "Get user's liked songs",
+          "POST /api/favorites": "Add song to favorites",
+          "DELETE /api/favorites/:songId": "Remove song from favorites"
+        },
+        "playlists": {
+          "GET /api/playlists": "Get user's playlists",
+          "POST /api/playlists": "Create new playlist",
+          "GET /api/playlists/:id": "Get playlist details",
+          "PUT /api/playlists/:id": "Update playlist",
+          "DELETE /api/playlists/:id": "Delete playlist",
+          "POST /api/playlists/:id/songs": "Add song to playlist",
+          "DELETE /api/playlists/:id/songs/:songId": "Remove song from playlist",
+          "PUT /api/playlists/:id/songs/reorder": "Reorder playlist songs"
+        },
+        "artists": {
+          "GET /api/artists/search": "Search artists via Discogs API",
+          "GET /api/artists/:id": "Get artist details from Discogs",
+          "GET /api/artists/following": "Get user's followed artists",
+          "POST /api/artists/follow": "Follow artist",
+          "DELETE /api/artists/unfollow/:artistId": "Unfollow artist"
+        },
+        "history": {
+          "GET /api/history": "Get user's listening history",
+          "POST /api/history": "Add listening record",
+          "DELETE /api/history": "Clear listening history"
+        },
+        "curated": {
+          "GET /api/curated/playlists": "Get curated playlists",
+          "GET /api/curated/discover-weekly": "Get user's discover weekly",
+          "GET /api/curated/release-radar": "Get user's release radar",
+          "GET /api/curated/daily-mix": "Get user's daily mix"
+        },
+        "search": {
+          "GET /api/search": "Search across songs, artists, albums",
+          "POST /api/search/history": "Save search history"
+        }
+      }
+    },
+    "frontend_structure": {
+      "project_structure": {
+        "src/": {
+          "components/": "Reusable UI components",
+          "pages/": "Page components",
+          "hooks/": "Custom React hooks",
+          "context/": "React Context providers",
+          "services/": "API service functions",
+          "types/": "TypeScript type definitions",
+          "utils/": "Helper functions",
+          "styles/": "Global styles"
+        },
+        "public/": "Static assets",
+        "package.json": "Dependencies and scripts",
+        "tsconfig.json": "TypeScript configuration",
+        "tailwind.config.js": "Tailwind configuration",
+        "vite.config.ts": "Vite configuration"
+      },
+      "dependencies": {
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "react-router-dom": "^6.15.0",
+        "axios": "^1.5.0",
+        "lucide-react": "^0.263.1",
+        "@types/react": "^18.2.21",
+        "@types/react-dom": "^18.2.7",
+        "typescript": "^5.1.6",
+        "tailwindcss": "^3.3.3",
+        "autoprefixer": "^10.4.15",
+        "postcss": "^8.4.28",
+        "vite": "^4.4.9",
+        "@vitejs/plugin-react": "^4.0.4"
+      },
+      "context_providers": {
+        "AuthContext": "User authentication state",
+        "PlayerContext": "Music player state",
+        "PlaylistContext": "Playlist management state"
+      },
+      "custom_hooks": {
+        "useAuth": "Authentication hook",
+        "usePlayer": "Music player hook",
+        "usePlaylists": "Playlist management hook",
+        "useSearch": "Search functionality hook",
+        "useDiscogs": "Discogs API hook"
+      },
+      "api_services": {
+        "authService": "Authentication API calls",
+        "songService": "Song and Discogs API calls",
+        "playlistService": "Playlist API calls",
+        "artistService": "Artist API calls",
+        "historyService": "Listening history API calls",
+        "curatedService": "Curated playlists API calls"
+      }
+    },
+    "implementation_instructions": {
+      "backend_setup": [
+        "1. Initialize Node.js project with TypeScript",
+        "2. Install all required dependencies",
+        "3. Set up MongoDB connection with Mongoose",
+        "4. Create all Mongoose models with proper schemas and indexes",
+        "5. Implement JWT authentication middleware",
+        "6. Create Discogs API service with rate limiting",
+        "7. Implement all API endpoints with proper validation",
+        "8. Add error handling middleware",
+        "9. Set up CORS and security headers",
+        "10. Create playlist generation algorithms",
+        "11. Implement cron jobs for curated playlists"
+      ],
+      "frontend_setup": [
+        "1. Initialize React project with Vite and TypeScript",
+        "2. Install all required dependencies",
+        "3. Set up React Router for navigation",
+        "4. Create Context providers for state management",
+        "5. Implement custom hooks for API calls",
+        "6. Create reusable UI components",
+        "7. Implement all pages with proper routing",
+        "8. Add authentication flow",
+        "9. Implement music player functionality",
+        "10. Add search functionality with Discogs integration",
+        "11. Create playlist management features",
+        "12. Add responsive design with Tailwind CSS"
+      ],
+      "key_features_to_implement": [
+        "User registration and login with JWT",
+        "Discogs API integration for music search",
+        "Like/unlike songs functionality",
+        "Create, edit, and delete playlists",
+        "Add/remove songs from playlists",
+        "Follow/unfollow artists",
+        "Listening history tracking",
+        "Curated playlist generation",
+        "Search functionality across songs, artists, albums",
+        "Music player with play/pause, skip, volume control",
+        "Responsive design for mobile and desktop",
+        "Real-time playlist updates",
+        "User profile management",
+        "Theme switching (dark/light mode)"
+      ],
+      "security_considerations": [
+        "Hash passwords with bcrypt",
+        "Validate all input data with Joi",
+        "Implement rate limiting for API endpoints",
+        "Use HTTPS in production",
+        "Sanitize user inputs",
+        "Implement proper CORS policies",
+        "Add request size limits",
+        "Use environment variables for sensitive data"
+      ],
+      "performance_optimizations": [
+        "Implement database indexes for common queries",
+        "Cache Discogs API responses",
+        "Use pagination for large datasets",
+        "Implement lazy loading for images",
+        "Optimize bundle size with code splitting",
+        "Use React.memo for expensive components",
+        "Implement virtual scrolling for long lists"
+      ]
+    },
+    "testing_requirements": {
+      "backend_tests": [
+        "Unit tests for all controllers",
+        "Integration tests for API endpoints",
+        "Database connection tests",
+        "Authentication flow tests",
+        "Discogs API integration tests"
+      ],
+      "frontend_tests": [
+        "Component unit tests",
+        "Hook testing",
+        "Integration tests for user flows",
+        "API service tests",
+        "Responsive design tests"
+      ]
+    },
+    "deployment_instructions": {
+      "backend_deployment": [
+        "Set up MongoDB Atlas or local MongoDB",
+        "Configure environment variables",
+        "Set up PM2 or similar process manager",
+        "Configure reverse proxy (nginx)",
+        "Set up SSL certificates",
+        "Configure monitoring and logging"
+      ],
+      "frontend_deployment": [
+        "Build production bundle",
+        "Deploy to Vercel, Netlify, or similar",
+        "Configure environment variables",
+        "Set up custom domain",
+        "Configure CDN for static assets"
+      ]
+    },
+    "additional_notes": {
+      "discogs_api_limits": "60 requests per minute, implement caching",
+      "playlist_generation": "Use user listening history and preferences",
+      "mobile_responsiveness": "Ensure all components work on mobile devices",
+      "accessibility": "Follow WCAG guidelines for accessibility",
+      "error_handling": "Implement comprehensive error handling and user feedback",
+      "loading_states": "Add loading indicators for all async operations",
+      "offline_support": "Consider implementing service workers for offline functionality"
+    }
+  }

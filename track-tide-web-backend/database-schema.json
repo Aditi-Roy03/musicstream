@@ -1,0 +1,411 @@
+{
+  "database_name": "track_tide_web",
+  "description": "MongoDB database schema for Track Tide Web music streaming application with user personalization features - storing only IDs and references",
+  "collections": {
+    "users": {
+      "description": "User account information and preferences",
+      "schema": {
+        "_id": "ObjectId",
+        "name": "String (required)",
+        "email": "String (required, unique)",
+        "password": "String (required, hashed)",
+        "avatar": "String (optional, URL)",
+        "preferences": {
+          "theme": "String (default: 'dark')",
+          "language": "String (default: 'en')",
+          "autoplay": "Boolean (default: true)",
+          "crossfade": "Boolean (default: false)",
+          "crossfade_duration": "Number (default: 0, seconds)",
+          "audio_quality": "String (default: 'high', options: 'low', 'medium', 'high')",
+          "explicit_content": "Boolean (default: true)"
+        },
+        "subscription": {
+          "plan": "String (default: 'free', options: 'free', 'premium', 'family')",
+          "status": "String (default: 'active', options: 'active', 'cancelled', 'expired')",
+          "start_date": "Date",
+          "end_date": "Date",
+          "auto_renew": "Boolean (default: true)"
+        },
+        "created_at": "Date (default: Date.now)",
+        "updated_at": "Date (default: Date.now)",
+        "last_login_at": "Date",
+        "is_active": "Boolean (default: true)",
+        "email_verified": "Boolean (default: false)",
+        "verification_token": "String (optional)",
+        "reset_password_token": "String (optional)",
+        "reset_password_expires": "Date (optional)"
+      },
+      "indexes": [
+        {"email": 1},
+        {"created_at": -1},
+        {"last_login_at": -1}
+      ]
+    },
+    "user_favorites": {
+      "description": "User's favorite songs (liked songs) - stores only MusicBrainz IDs",
+      "schema": {
+        "_id": "ObjectId",
+        "user_id": "ObjectId (required, ref: users)",
+        "musicbrainz_song_id": "String (required, MusicBrainz recording ID)",
+        "added_at": "Date (default: Date.now)",
+        "source": "String (optional, e.g., 'search', 'recommendation', 'playlist')",
+        "last_accessed": "Date (optional)"
+      },
+      "indexes": [
+        {"user_id": 1, "musicbrainz_song_id": 1},
+        {"user_id": 1, "added_at": -1},
+        {"musicbrainz_song_id": 1}
+      ]
+    },
+    "user_play_history": {
+      "description": "User's song play history and listening behavior - stores only MusicBrainz IDs",
+      "schema": {
+        "_id": "ObjectId",
+        "user_id": "ObjectId (required, ref: users)",
+        "musicbrainz_song_id": "String (required, MusicBrainz recording ID)",
+        "musicbrainz_artist_id": "String (optional, MusicBrainz artist ID)",
+        "musicbrainz_album_id": "String (optional, MusicBrainz release ID)",
+        "played_at": "Date (default: Date.now)",
+        "duration_played": "Number (seconds, how long user listened)",
+        "completion_rate": "Number (0-1, percentage of song completed)",
+        "source": "String (optional, e.g., 'search', 'playlist', 'recommendation', 'artist_page')",
+        "device": "String (optional, e.g., 'web', 'mobile', 'desktop')",
+        "context": {
+          "playlist_id": "ObjectId (optional, ref: playlists)",
+          "search_query": "String (optional)"
+        },
+        "interaction_type": "String (default: 'play', options: 'play', 'skip', 'pause', 'resume')",
+        "volume_level": "Number (optional, 0-1)",
+        "shuffle_mode": "Boolean (optional)",
+        "repeat_mode": "String (optional, 'none', 'one', 'all')"
+      },
+      "indexes": [
+        {"user_id": 1, "played_at": -1},
+        {"musicbrainz_song_id": 1, "played_at": -1},
+        {"user_id": 1, "musicbrainz_song_id": 1},
+        {"musicbrainz_artist_id": 1, "played_at": -1},
+        {"played_at": -1}
+      ]
+    },
+    "user_downloads": {
+      "description": "User's downloaded songs for offline listening - stores only MusicBrainz IDs",
+      "schema": {
+        "_id": "ObjectId",
+        "user_id": "ObjectId (required, ref: users)",
+        "musicbrainz_song_id": "String (required, MusicBrainz recording ID)",
+        "downloaded_at": "Date (default: Date.now)",
+        "file_size": "Number (bytes)",
+        "file_path": "String (optional, local file path)",
+        "download_status": "String (default: 'completed', options: 'pending', 'completed', 'failed')",
+        "last_accessed": "Date (optional)",
+        "is_deleted": "Boolean (default: false)"
+      },
+      "indexes": [
+        {"user_id": 1, "downloaded_at": -1},
+        {"user_id": 1, "musicbrainz_song_id": 1},
+        {"download_status": 1}
+      ]
+    },
+    "playlists": {
+      "description": "User-created and system playlists",
+      "schema": {
+        "_id": "ObjectId",
+        "name": "String (required)",
+        "description": "String (optional)",
+        "owner_id": "ObjectId (required, ref: users)",
+        "is_public": "Boolean (default: false)",
+        "is_collaborative": "Boolean (default: false)",
+        "cover_image": "String (optional, URL)",
+        "created_at": "Date (default: Date.now)",
+        "updated_at": "Date (default: Date.now)",
+        "followers_count": "Number (default: 0)",
+        "total_duration": "Number (seconds, calculated)",
+        "tags": ["String"],
+        "playlist_type": "String (default: 'user', options: 'user', 'system', 'featured', 'discover_weekly', 'release_radar')"
+      },
+      "indexes": [
+        {"owner_id": 1, "created_at": -1},
+        {"is_public": 1, "followers_count": -1},
+        {"playlist_type": 1},
+        {"name": "text", "description": "text"}
+      ]
+    },
+    "playlist_songs": {
+      "description": "Songs in playlists - stores only MusicBrainz IDs",
+      "schema": {
+        "_id": "ObjectId",
+        "playlist_id": "ObjectId (required, ref: playlists)",
+        "musicbrainz_song_id": "String (required, MusicBrainz recording ID)",
+        "added_by": "ObjectId (required, ref: users)",
+        "added_at": "Date (default: Date.now)",
+        "position": "Number (optional, for custom ordering)",
+        "notes": "String (optional, user notes about the song)"
+      },
+      "indexes": [
+        {"playlist_id": 1, "position": 1},
+        {"playlist_id": 1, "added_at": -1},
+        {"musicbrainz_song_id": 1}
+      ]
+    },
+    "user_follows": {
+      "description": "User following relationships - stores only MusicBrainz artist IDs",
+      "schema": {
+        "_id": "ObjectId",
+        "follower_id": "ObjectId (required, ref: users)",
+        "followed_type": "String (required, options: 'artist', 'user')",
+        "followed_id": "String (required, MusicBrainz artist ID or ObjectId for users)",
+        "followed_at": "Date (default: Date.now)",
+        "notifications_enabled": "Boolean (default: true)"
+      },
+      "indexes": [
+        {"follower_id": 1, "followed_type": 1, "followed_id": 1},
+        {"followed_id": 1, "followed_type": 1},
+        {"followed_at": -1}
+      ]
+    },
+    "user_search_history": {
+      "description": "User's search queries and interactions",
+      "schema": {
+        "_id": "ObjectId",
+        "user_id": "ObjectId (required, ref: users)",
+        "query": "String (required)",
+        "searched_at": "Date (default: Date.now)",
+        "results_count": "Number (optional)",
+        "clicked_results": ["String (MusicBrainz IDs of clicked songs/artists)"],
+        "search_type": "String (optional, 'song', 'artist', 'album', 'playlist')",
+        "filters": {
+          "genre": "String (optional)",
+          "duration": "String (optional)",
+          "year": "Number (optional)"
+        },
+        "session_id": "String (optional)"
+      },
+      "indexes": [
+        {"user_id": 1, "searched_at": -1},
+        {"query": "text"},
+        {"search_type": 1}
+      ]
+    },
+    "user_recommendations": {
+      "description": "Personalized song recommendations for users - stores only MusicBrainz IDs",
+      "schema": {
+        "_id": "ObjectId",
+        "user_id": "ObjectId (required, ref: users)",
+        "musicbrainz_song_id": "String (required, MusicBrainz recording ID)",
+        "recommendation_type": "String (required, options: 'collaborative_filtering', 'content_based', 'popularity', 'genre_based', 'artist_based')",
+        "score": "Number (0-1, recommendation confidence)",
+        "reason": "String (optional, explanation for recommendation)",
+        "generated_at": "Date (default: Date.now)",
+        "is_dismissed": "Boolean (default: false)",
+        "is_played": "Boolean (default: false)",
+        "played_at": "Date (optional)",
+        "feedback": "String (optional, 'like', 'dislike', 'neutral')"
+      },
+      "indexes": [
+        {"user_id": 1, "generated_at": -1},
+        {"user_id": 1, "recommendation_type": 1, "score": -1},
+        {"musicbrainz_song_id": 1}
+      ]
+    },
+    "user_listening_stats": {
+      "description": "Aggregated user listening statistics - stores only MusicBrainz IDs",
+      "schema": {
+        "_id": "ObjectId",
+        "user_id": "ObjectId (required, ref: users)",
+        "period": "String (required, 'daily', 'weekly', 'monthly', 'yearly')",
+        "period_start": "Date (required)",
+        "period_end": "Date (required)",
+        "total_listening_time": "Number (seconds)",
+        "songs_played": "Number",
+        "unique_songs": "Number",
+        "unique_artists": "Number",
+        "top_genres": [{"genre": "String", "play_count": "Number"}],
+        "top_artists": [{"musicbrainz_artist_id": "String", "play_count": "Number"}],
+        "top_songs": [{"musicbrainz_song_id": "String", "play_count": "Number"}],
+        "average_session_duration": "Number (seconds)",
+        "sessions_count": "Number",
+        "created_at": "Date (default: Date.now)",
+        "updated_at": "Date (default: Date.now)"
+      },
+      "indexes": [
+        {"user_id": 1, "period": 1, "period_start": -1},
+        {"user_id": 1, "period_start": -1}
+      ]
+    },
+    "user_activity_log": {
+      "description": "Detailed user activity log for analytics - stores only MusicBrainz IDs",
+      "schema": {
+        "_id": "ObjectId",
+        "user_id": "ObjectId (required, ref: users)",
+        "action": "String (required, e.g., 'play_song', 'like_song', 'create_playlist', 'follow_artist')",
+        "timestamp": "Date (default: Date.now)",
+        "details": {
+          "musicbrainz_song_id": "String (optional, MusicBrainz recording ID)",
+          "musicbrainz_artist_id": "String (optional, MusicBrainz artist ID)",
+          "musicbrainz_album_id": "String (optional, MusicBrainz release ID)",
+          "playlist_id": "ObjectId (optional, ref: playlists)",
+          "duration": "Number (optional, seconds)",
+          "source": "String (optional)",
+          "device": "String (optional)",
+          "ip_address": "String (optional)",
+          "user_agent": "String (optional)"
+        },
+        "session_id": "String (optional)",
+        "metadata": "Object (optional, additional context)"
+      },
+      "indexes": [
+        {"user_id": 1, "timestamp": -1},
+        {"action": 1, "timestamp": -1},
+        {"session_id": 1}
+      ]
+    },
+    "system_playlists": {
+      "description": "System-generated playlists like Discover Weekly, Release Radar",
+      "schema": {
+        "_id": "ObjectId",
+        "name": "String (required)",
+        "description": "String (optional)",
+        "playlist_type": "String (required, options: 'discover_weekly', 'release_radar', 'daily_mix', 'time_capsule', 'wrapped')",
+        "generation_date": "Date (required)",
+        "expiry_date": "Date (optional)",
+        "is_active": "Boolean (default: true)",
+        "cover_image": "String (optional, URL)",
+        "total_duration": "Number (seconds)",
+        "created_at": "Date (default: Date.now)"
+      },
+      "indexes": [
+        {"playlist_type": 1, "generation_date": -1},
+        {"is_active": 1},
+        {"expiry_date": 1}
+      ]
+    },
+    "system_playlist_songs": {
+      "description": "Songs in system playlists - stores only MusicBrainz IDs",
+      "schema": {
+        "_id": "ObjectId",
+        "system_playlist_id": "ObjectId (required, ref: system_playlists)",
+        "musicbrainz_song_id": "String (required, MusicBrainz recording ID)",
+        "position": "Number (required, for ordering)",
+        "added_at": "Date (default: Date.now)"
+      },
+      "indexes": [
+        {"system_playlist_id": 1, "position": 1},
+        {"musicbrainz_song_id": 1}
+      ]
+    },
+    "notifications": {
+      "description": "User notifications and alerts - stores only MusicBrainz IDs",
+      "schema": {
+        "_id": "ObjectId",
+        "user_id": "ObjectId (required, ref: users)",
+        "type": "String (required, options: 'new_release', 'playlist_update', 'recommendation', 'system')",
+        "title": "String (required)",
+        "message": "String (required)",
+        "is_read": "Boolean (default: false)",
+        "created_at": "Date (default: Date.now)",
+        "read_at": "Date (optional)",
+        "action_url": "String (optional)",
+        "metadata": {
+          "musicbrainz_song_id": "String (optional, MusicBrainz recording ID)",
+          "musicbrainz_artist_id": "String (optional, MusicBrainz artist ID)",
+          "musicbrainz_album_id": "String (optional, MusicBrainz release ID)",
+          "playlist_id": "ObjectId (optional, ref: playlists)"
+        }
+      },
+      "indexes": [
+        {"user_id": 1, "created_at": -1},
+        {"user_id": 1, "is_read": 1},
+        {"type": 1}
+      ]
+    },
+    "musicbrainz_cache": {
+      "description": "Cache for MusicBrainz API responses to reduce API calls",
+      "schema": {
+        "_id": "ObjectId",
+        "musicbrainz_id": "String (required, unique)",
+        "entity_type": "String (required, options: 'recording', 'artist', 'release')",
+        "data": "Object (required, cached API response)",
+        "cached_at": "Date (default: Date.now)",
+        "expires_at": "Date (required, cache expiry)",
+        "access_count": "Number (default: 0)",
+        "last_accessed": "Date (default: Date.now)"
+      },
+      "indexes": [
+        {"musicbrainz_id": 1, "entity_type": 1},
+        {"expires_at": 1},
+        {"cached_at": -1}
+      ]
+    }
+  },
+  "relationships": {
+    "user_favorites": {
+      "user_id": "references users._id",
+      "musicbrainz_song_id": "references MusicBrainz recording ID"
+    },
+    "user_play_history": {
+      "user_id": "references users._id",
+      "musicbrainz_song_id": "references MusicBrainz recording ID"
+    },
+    "user_downloads": {
+      "user_id": "references users._id",
+      "musicbrainz_song_id": "references MusicBrainz recording ID"
+    },
+    "playlist_songs": {
+      "playlist_id": "references playlists._id",
+      "musicbrainz_song_id": "references MusicBrainz recording ID"
+    },
+    "user_follows": {
+      "follower_id": "references users._id",
+      "followed_id": "references MusicBrainz artist ID or users._id"
+    },
+    "user_search_history": {
+      "user_id": "references users._id"
+    },
+    "user_recommendations": {
+      "user_id": "references users._id",
+      "musicbrainz_song_id": "references MusicBrainz recording ID"
+    },
+    "user_listening_stats": {
+      "user_id": "references users._id"
+    },
+    "user_activity_log": {
+      "user_id": "references users._id"
+    },
+    "notifications": {
+      "user_id": "references users._id"
+    },
+    "system_playlist_songs": {
+      "system_playlist_id": "references system_playlists._id",
+      "musicbrainz_song_id": "references MusicBrainz recording ID"
+    }
+  },
+  "api_integration": {
+    "musicbrainz_endpoints": {
+      "search_recordings": "GET https://musicbrainz.org/ws/2/recording/?query={query}&fmt=json",
+      "get_recording": "GET https://musicbrainz.org/ws/2/recording/{id}?fmt=json&inc=artists+releases",
+      "search_artists": "GET https://musicbrainz.org/ws/2/artist/?query={query}&fmt=json",
+      "get_artist": "GET https://musicbrainz.org/ws/2/artist/{id}?fmt=json&inc=releases",
+      "search_releases": "GET https://musicbrainz.org/ws/2/release/?query={query}&fmt=json",
+      "get_release": "GET https://musicbrainz.org/ws/2/release/{id}?fmt=json&inc=recordings+artists"
+    },
+    "rate_limiting": {
+      "requests_per_second": 1,
+      "cache_duration": "24 hours",
+      "max_cache_size": "1000 items per entity type"
+    }
+  },
+  "data_flow": {
+    "song_playback": "1. User plays song → 2. Store MusicBrainz ID in user_play_history → 3. Fetch song data from MusicBrainz API → 4. Cache response → 5. Return to user",
+    "search": "1. User searches → 2. Query MusicBrainz API → 3. Store search in user_search_history → 4. Cache results → 5. Return to user",
+    "favorites": "1. User likes song → 2. Store MusicBrainz ID in user_favorites → 3. Fetch song data when displaying favorites",
+    "recommendations": "1. Analyze user_play_history → 2. Generate recommendations → 3. Store MusicBrainz IDs in user_recommendations → 4. Fetch song data when displaying"
+  },
+  "implementation_notes": {
+    "musicbrainz_integration": "All song/artist/album data will be fetched from MusicBrainz API using stored IDs",
+    "caching_strategy": "Implement intelligent caching to reduce API calls and improve performance",
+    "user_interactions": "Store only IDs and metadata, fetch full data on-demand",
+    "recommendations": "Use stored IDs to generate recommendations, fetch song data when needed",
+    "analytics": "Aggregate statistics using stored IDs, fetch metadata for display",
+    "performance": "Use indexes on MusicBrainz IDs for fast lookups and joins"
+  }
+} 
